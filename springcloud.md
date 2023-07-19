@@ -208,3 +208,288 @@ public class UserController {
 
 **在2、3配置完成后分别启动多个nacos节点**
 
+#### 4. Feign远程调用
+
+1. **编写Feign客户端**，在cn.itcast.order包里创建clients包，并创建UserClient接口
+
+   ```java
+   @FeignClient("userservice")
+   public interface UserClient {
+       @GetMapping("/user/{id}")
+       User findById(@PathVariable("id") Long id);
+   }
+   // 服务名称：userservice
+   // 请求方式：GET
+   // 请求路径：/user/{id}
+   // 请求参数：Long id
+   // 返回值类型User
+   ```
+
+   在orderservice里注入UserClient,调用其方法即可使用（并且在启动类上加上开启Feign注解@EnableFeignClients）
+
+   ```java
+   @Autowired
+   private UserClient userClient;
+   User user = userClient.queryById(order.getUserId());
+   ```
+
+   引入依赖
+
+   添加@EnableFeignClients注解
+
+   编写FeignClient接口
+
+   调用接口
+
+2. **自定义Feign配置**
+
+   方式一、配置文件方式
+
+   ```yaml
+   feign:
+     client:
+       config:
+         default: # default为全局配置，写服务名称则只针对单个微服务 eg:userservice
+           loggerLevel: FULL
+   ```
+
+   方式二、Java代码方式，需要先声明一个bean
+
+   ```java
+   public class DefaultFeignConfiguration {
+       @Bean
+       public Logger.Level logLevel(){
+           return Logger.Level.BASIC;
+       }
+   }
+   
+   ```
+
+   1. 如果是全局配置，则把他放到启动类上的@EnableFeignClients注解中：
+
+      @EnableFeignClients(defaultConfiguration = FeignConfiguration.class)
+
+   2. 如果是局部配置，则放到@FeignClient注解中：
+
+      @FeignClient(value = "userservice"，defaultConfiguration = FeignConfiguration.class)
+
+3. **Feign的性能优化**
+
+   1. 使用连接池代替默认的URLConnection
+
+      如果要使用HttpClint替换，则需引入HttpClient的依赖，然后在配置文件里配置连接池
+
+      ``` yaml
+      feign:
+        httpclient:
+          enable: true # 开启Feign对HttpClient的支持
+          max-connection: 200 # 最大的连接数
+          max-connection-per-route: 50 # 每个路径最大连接数
+      ```
+
+      
+
+   2. 修改日志级别为Basic或none
+
+   
+
+4. **Feign的最佳实践（继承和抽取）**
+
+   方式一、继承，给消费者的FeignClient和提供者的controller定义统一的父接口作为标准
+
+   缺点：服务紧耦合，父接口参数列表不会被继承
+
+   方式二、抽取，将FeignClient抽取为独立模块，并且把接口有关的POJO、默认的Feign配置都放到这个模块中，提供给消费者使用
+
+#### 5. 统一网关Gateway
+
+1. **网关功能：**
+
+   身份认证和权限校验
+
+   服务路由（请求路由到微服务）和负载均衡
+
+   请求限流
+
+2. **网关的技术实现（gateway和zuul）**
+
+   Zuul是基于Servlet实现，属于阻塞式编程。而SpringCloundGateway是基于Spring5提供的WebFlux，属于响应式编程的实现，具备更好的性能。
+
+3. **搭建网关服务**
+
+   1. 创建新的module，引入SpringCloudGateway依赖和nacos的服务发现依赖
+
+   2. 编写路由配置及Nacos地址
+
+      ``` yaml
+      server：
+        port: 10010
+      spring:
+        application:
+          name: gateway
+        cloud: 
+          nacos:
+            server-addr: localhost:8848 # nacos地址
+          gateway:
+            routes: # 网关路由配置
+              - id: user-service # 路由id，自定义，唯一即可
+                uri: lb://userservice # 路由的目标地址 lb就是负载均衡，后面跟服务名称
+                predicates: # 路由断言，判断请求是否符合路由规则的条件
+                  - Path=/user/** # 按路径匹配，只要以/user/开头就符合要求
+      ```
+
+      注：还可配置filters: 路由过滤器，处理请求或响应，uri: 路由目的地支持http和lb两种
+
+   3. 路由断言工厂Route Predicate Factory（Spring提供了11中基本的断言工厂）
+
+      After: 是某个时间点后的请求
+
+      Before: 是某个时间点前的请求
+
+      Between：是两个时间点之间的请求
+
+      Cookie: 请求必须包含某些cookie
+
+      Header: 请求必须包含某些header
+
+      Host: 请求必须是访问某个host（域名）
+
+      Method：请求必须是指定方式 (- Method=GET,POST)
+
+      Path： 请求路径必须符合指定规则
+
+      Query：请求必须包含指定参数
+
+      RemoteAddr：请求的ip必须是指定范围 (- RemoteAddr=19.168.1.1/24)
+
+      Weight：权重处理
+
+4. **路由过滤器** **GatewayFilter**
+
+   GatewayFilter是网关中提供的一种过滤器，可以对进入网关的请求和微服务的响应做处理
+
+   eg：给所有进入userszervice的请求添加一个请求头：Truth=excelsior0657 is awesome!
+
+   ``` yaml
+   spring:
+     cloud:
+       gateway:
+         routes: # 网关路由配置
+           - id: user-service # 路由id，自定义，唯一即可
+             uri: lb://userservice # 路由的目标地址 lb就是负载均衡，后面跟服务名称
+             predicates: # 路由断言，判断请求是否符合路由规则的条件
+               - Path=/user/** # 按路径匹配，只要以/user/开头就符合要求
+             filter: # 过滤器
+             - AddRequestHeader=Truth, excelsior0657 is awesome! # 添加请求头
+         default-filters: # 默认过滤器，会对所有的请求路径都生效
+           - AddRequestHeader=Truth, excelsior0657 is awesome!
+   ```
+
+5.  **全局过滤器** **GlobalFilter**
+
+   全局过滤器的作用和Gateway一样，也是处理一切进去网关的请求和微服务的响应
+
+   区别在于GatewayFilter通过配置定义，处理逻辑是固定的。而GlobalFilter的逻辑需要自己写代码实现。定义的方式是实现GlobalFilter接口。
+
+   ```java
+   public interface GlobalFilter{
+       // 处理当前请求，有必要时，可通过{@link GatewayFilterChain}将请求交给下一个过滤器处理
+       // @param exchange 请求上下文，里面可以获取Request、Respose等信息
+       // @param chain 用来把请求委托给下一个过滤器
+       // @return {@code Mono<Void>} 返回标示当前过滤器业务结束
+       Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain);
+   }
+   ```
+
+   ```java
+   @Order(-1) // 设置过滤器优先级，值越小，优先级越高，越先执行
+   @Component
+   public class AutoorzeFilter implements GlobalFilter{
+       @Override
+       public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterCgai chain){
+           // 1.获取请求参数
+       ServerHttpRequest request = exchange.getRequest();
+       MultiValueMap<string, String> params = request.getQueryParams();
+       // 2.获取参数中的 authorization 参数
+       String auth = params.getFirst("authorization");
+       // 3.判断参数是否等于 admin
+       if("admin".equals(auth)){
+           // 是，则放行
+           return chain.filter(exchange);
+       }
+       // 不是，则拦截
+       // 设置状态码
+       exchange.getResponse().setStatusCode(HttpStatus.UNAUTHRIZEO);
+       // 拦截请求
+       return exchange.getResponse().setComplete();
+   }
+   }
+   ```
+
+6. **过滤器执行顺序**
+
+   请求进入网关会碰到三类过滤器：当前的路由过滤器、DefaultFilter、GlobalFilter
+
+   请求路由后，会将当前的路由过滤器、DefaultFilter、GlobalFilter，合并到一个过滤器链（集合）中，排序后依次执行
+
+   **执行顺序：**
+
+   1. 每个过滤器都必须指定一个int类型的order值，order值越小，优先级越高，排序越靠前
+
+   2. GlobalFilter通过实现Ordered接口，或者添加@Order注解来指定order值，有我们自己指定
+
+   3. 路由过滤器和defaultFilter的order有Spring指定，默认是按声明顺序从1递增
+
+      ``` yaml
+      spring:
+        cloud:
+          gateway:
+            routes: 
+              - id: user-service 
+                uri: lb://userservice 
+                predicates: 
+                  - Path=/user/** 
+                filter: 
+                - AddRequestHeader=Truth, excelsior0657 is awesome! # order=1
+                - AddRequestHeader=Truth, excelsior0657 is awesome! # order=2
+                - AddRequestHeader=Truth, excelsior0657 is awesome! # order=3
+            default-filters: 
+              - AddRequestHeader=Truth, excelsior0657 is awesome! # order=1
+              - AddRequestHeader=Truth, excelsior0657 is awesome! # order=2
+              - AddRequestHeader=Truth, excelsior0657 is awesome! # order=3
+      ```
+
+      当过滤器的值一样时，按照 defaultFilter  > 路由过滤器 > GlobalFilter 的顺序执行
+
+7. **跨域问题处理**
+
+   跨域：域名不一致就是跨域，主要包括：
+
+   域名不同：www.taobao.com 和 www.taobao.org 和 www.jd.com 和 miaosha.jd.com
+
+   域名相同，端口不同：localhost:8080 和 localhost:8081
+
+   跨域问题：浏览器禁止请求发起者与服务端发生跨域ajax请求，请求被浏览器拦截的问题
+
+   **网关跨域处理采用CORS方案，只需简单配置即可实现**
+
+   ``` yaml
+   spring:
+     cloud:
+       gateway:
+         globalcors: # 全局的跨域处理
+           add-to-simple-url-handler-mapping: true # 解决options被拦截的问题
+           corsConfiguration:
+           '[/**]':
+             allowedOrigins: # 允许哪些网站的跨域请求
+             - "http://localhost:8090"
+             - "http://www.leyou.com"
+             allowedMethods: # 允许的跨域ajax的请求方式
+               - "GET"
+               - "POST"
+             allowedHeaders: "*" # 允许在请求头上携带信息
+             allowedCredentials: true # 是否允许携带cookie
+             maxAge: 360000 # 允许跨域检测的有效期
+   ```
+
+   
