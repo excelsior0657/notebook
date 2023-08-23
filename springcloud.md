@@ -8,6 +8,10 @@
 
 ### 三、Nacos
 
+单机启动：startup.cmd -m standalone
+
+集群启动：双击即可
+
 #### 1. Nacos注册中心
 
 1. **Nacos服务分级存储模型**
