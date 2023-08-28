@@ -29,7 +29,7 @@
 @Resource(name = "userService1")
 private UserService1 userService1;
 
-@Resource(type = UserService.class)
+@Resource(type = UserService2.class)
 private UserService2 userService2;
 ```
 
@@ -53,7 +53,7 @@ DI表示依赖注入，对于IOC容器管理的bean,如果bean之间存在依赖
 
 ### 五、SpringBoot中自动装配机制的原理
 
-自动装配，就是**自动把第三方组件的bean装载到IOC容器里**，不需要开发人员再去写bean相关的一个配置。在SpringBoot里只需要在启动类上加上@SpringBootApplication注解就可以实现自动装配。@SpringBootApplication注解是一个符合注解，真正实现自动装配的注解是@EnableAutoConfiguration
+自动装配，就是**自动把第三方组件的bean装载到IOC容器里**，不需要开发人员再去写bean相关的一个配置。在SpringBoot里只需要在启动类上加上@SpringBootApplication注解就可以实现自动装配。@SpringBootApplication注解是一个复合注解，真正实现自动装配的注解是@EnableAutoConfiguration
 
 例如：如果依赖了Starter启动依赖，它会自动把启动依赖里相关的一些bean装载到容器里，这样就可以直接通过一个DI的方式去完成依赖注入的动作
 
